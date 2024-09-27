@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Section Finder</title>
+</head>
+<body>
+    <h1>First Information Report (FIR) Assistant</h1>
+    <form id="complaintForm">
+        <label for="complaint">Enter Complaint:</label><br><br>
+        <textarea id="complaint" name="complaint" rows="4" cols="50"></textarea><br><br>
+        <button type="submit">Find Relevant Sections</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        document.getElementById("complaintForm").addEventListener("submit", async function(event) {
+            event.preventDefault();  // Prevent the form from reloading the page
+
+            const complaint = document.getElementById("complaint").value;  // Get complaint text
+            
+            if (!complaint) {
+                document.getElementById("result").innerHTML = "<p>Please enter a valid complaint description.</p>";
+                return;
+            }
+
+            try {
+                // Send a POST request to Flask backend
+                const response = await fetch('http://127.0.0.1:5000/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ complaint: complaint })
+                });
+
+                // Parse and display the response with hyperlinks
+                const data = await response.json();
+                const resultDiv = document.getElementById("result");
+
+                if (data.relevant_sections.error) {
+                    resultDiv.innerHTML = `<p>${data.relevant_sections.error}</p>`;
+                } else {
+                    let resultHTML = '<h2>Relevant Sections and Acts:</h2><ul>';
+                    for (const [term, sections] of Object.entries(data.relevant_sections)) {
+                        resultHTML += `<li><strong>${term}:</strong> `;
+
+                        // Iterate through each section and make it a clickable link
+                        sections.forEach(([section, link]) => {
+                            resultHTML += `<a href="${link}" target="_blank">${section}</a>, `;
+                        });
+
+                        resultHTML = resultHTML.slice(0, -2);  // Remove trailing comma and space
+                        resultHTML += '</li>';
+                    }
+                    resultHTML += '</ul>';
+                    resultDiv.innerHTML = resultHTML;
+                }
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                document.getElementById("result").innerHTML = "<p>There was an issue processing the request. Please try again later.</p>";
+            }
+        });
+    </script>
+</body>
+</html>

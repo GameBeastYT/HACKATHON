@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIR Assistant PWA</title>
+    
+    <!-- Link to Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icons/icon-192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="/icons/icon-512.png" sizes="512x512">
+    <meta name="theme-color" content="#ffffff">
+
+    <style>
+        .textarea-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        #complaint {
+            width: 400px;
+            height: 150px;
+            padding-right: 50px; /* Leave space for the icon */
+        }
+
+        #voiceIcon {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        #voiceIcon img {
+            width: 30px;
+            height: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>First Information Report (FIR) Assistant</h1>
+
+    <form id="complaintForm">
+        <label for="complaint">Enter Complaint:</label><br><br>
+
+        <div class="textarea-container">
+            <textarea id="complaint" name="complaint" rows="4" cols="50"></textarea>
+            <button type="button" id="voiceIcon">
+                <img src="/HACKATHON/icons/voiceicon.jpg" alt="Voice Icon">
+            </button>
+        </div><br><br>
+
+        <button type="submit">Find Relevant Sections</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        let isListening = false;
+        let recognition;
+
+        const voiceIconBtn = document.getElementById("voiceIcon");
+        const complaintTextarea = document.getElementById("complaint");
+
+        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-IN';
+            recognition.interimResults = false;
+
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                complaintTextarea.value += transcript;
+                console.log("You said: ", transcript);
+            };
+
+            recognition.onerror = function(event) {
+                alert("Error occurred in recognition: " + event.error);
+            };
+
+            recognition.onend = function() {
+                isListening = false;
+            };
+        } else {
+            alert("Sorry, your browser doesn't support speech recognition.");
+        }
+
+        navigator.permissions.query({ name: 'microphone' }).then(function(permissionStatus) {
+            permissionStatus.onchange = function() {
+                if (this.state === 'denied') {
+                    alert("Microphone access is denied.");
+                }
+            };
+        });
+
+        voiceIconBtn.addEventListener("click", function() {
+            if (!recognition) return;
+
+            navigator.permissions.query({ name: 'microphone' }).then(function(permissionStatus) {
+                if (permissionStatus.state === 'granted') {
+                    toggleRecognition();
+                } else {
+                    alert("Microphone access is denied.");
+                }
+            }).catch(function(error) {
+                console.error("Error querying microphone permission:", error);
+            });
+        });
+
+        function toggleRecognition() {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+            isListening = !isListening;
+        }
+
+        document.getElementById("complaintForm").addEventListener("submit", async function(event) {
+            event.preventDefault();
+
+            const complaint = complaintTextarea.value;
+
+            if (!complaint) {
+                document.getElementById("result").innerHTML = "<p>Please enter a valid complaint description.</p>";
+                return;
+            }
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ complaint: complaint })
+                });
+
+                const data = await response.json();
+                const resultDiv = document.getElementById("result");
+
+                if (data.relevant_sections.error) {
+                    resultDiv.innerHTML = `<p>${data.relevant_sections.error}</p>`;
+                } else {
+                    let resultHTML = '<h2>Relevant Sections and Acts:</h2><ul>';
+                    for (const [term, sections] of Object.entries(data.relevant_sections)) {
+                        resultHTML += `<li><strong>${term}:</strong> `;
+                        sections.forEach(([section, link]) => {
+                            resultHTML += `<a href="${link}" target="_blank">${section}</a>, `;
+                        });
+                        resultHTML = resultHTML.slice(0, -2);
+                        resultHTML += '</li>';
+                    }
+                    resultHTML += '</ul>';
+                    resultDiv.innerHTML = resultHTML;
+                }
+            } catch (error) {
+                document.getElementById("result").innerHTML = "<p>There was an issue processing the request. Please try again later.</p>";
+            }
+        });
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then((registration) => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }).catch((err) => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
